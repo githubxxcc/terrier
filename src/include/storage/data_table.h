@@ -95,15 +95,17 @@ class DataTable {
     /**
      * @warning MUST BE CALLED ONLY WHEN CALLER HOLDS LOCK TO THE LIST OF RAW BLOCKS IN THE DATA TABLE
      */
-    SlotIterator(const DataTable *table, std::list<RawBlock *>::const_iterator block, uint32_t offset_in_block)
-        : table_(table), block_(block) {
-      current_slot_ = {block == table->blocks_.end() ? nullptr : *block, offset_in_block};
+    SlotIterator(const DataTable *table, std::list<RawBlock *>::const_iterator block, uint32_t offset_in_block,
+        std::list<RawBlock*>::const_iterator end)
+        : table_(table), block_(block), end_(end) {
+      current_slot_ = {block == end_ ? nullptr : *block, offset_in_block};
     }
 
     // TODO(Tianyu): Can potentially collapse this information into the RawBlock so we don't have to hold a pointer to
     // the table anymore. Right now we need the table to know how many slots there are in the block
     const DataTable *table_;
     std::list<RawBlock *>::const_iterator block_;
+    std::list<RawBlock *>::const_iterator end_;
     TupleSlot current_slot_;
   };
   /**
@@ -157,8 +159,8 @@ class DataTable {
    * @return the first tuple slot contained in the data table
    */
   SlotIterator begin() const {  // NOLINT for STL name compability
-    common::SpinLatch::ScopedSpinLatch guard(&blocks_latch_);
-    return {this, blocks_.begin(), 0};
+    common::SpinLatch::ScopedSpinLatch guard(&blocks_latch_); // FIXME(me) : is thi slock needed?
+    return {this, blocks_.begin(), 0, blocks_.end()};
   }
 
   /**

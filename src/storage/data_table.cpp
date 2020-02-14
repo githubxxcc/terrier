@@ -45,7 +45,8 @@ void DataTable::Scan(const common::ManagedPointer<transaction::TransactionContex
   // but can be improved if block is read-only, or if we implement version synopsis, to just use std::memcpy when it's
   // safe
   uint32_t filled = 0;
-  while (filled < out_buffer->MaxTuples() && *start_pos != end()) {
+  auto local_end = end();
+  while (filled < out_buffer->MaxTuples() && *start_pos != local_end) { // FIXME(me): shortcut the end() function?
     ProjectedColumns::RowView row = out_buffer->InterpretAsRow(filled);
     const TupleSlot slot = **start_pos;
     // Only fill the buffer with valid, visible tuples
@@ -59,12 +60,12 @@ void DataTable::Scan(const common::ManagedPointer<transaction::TransactionContex
 }
 
 DataTable::SlotIterator &DataTable::SlotIterator::operator++() {
-  common::SpinLatch::ScopedSpinLatch guard(&table_->blocks_latch_);
+  // common::SpinLatch::ScopedSpinLatch guard(&table_->blocks_latch_);
   // Jump to the next block if already the last slot in the block.
   if (current_slot_.GetOffset() == table_->accessor_.GetBlockLayout().NumSlots() - 1) {
     ++block_;
     // Cannot dereference if the next block is end(), so just use nullptr to denote
-    current_slot_ = {block_ == table_->blocks_.end() ? nullptr : *block_, 0};
+    current_slot_ = {block_ ==  end_ ? nullptr : *block_, 0};
   } else {
     current_slot_ = {*block_, current_slot_.GetOffset() + 1};
   }
@@ -72,19 +73,21 @@ DataTable::SlotIterator &DataTable::SlotIterator::operator++() {
 }
 
 DataTable::SlotIterator DataTable::end() const {  // NOLINT for STL name compability
-  common::SpinLatch::ScopedSpinLatch guard(&blocks_latch_);
+  // FIXME(me): can I delete this?
+  // common::SpinLatch::ScopedSpinLatch guard(&blocks_latch_);
   // TODO(Tianyu): Need to look in detail at how this interacts with compaction when that gets in.
 
   // The end iterator could either point to an unfilled slot in a block, or point to nothing if every block in the
   // table is full. In the case that it points to nothing, we will use the end-iterator of the blocks list and
   // 0 to denote that this is the case. This solution makes increment logic simple and natural.
-  if (blocks_.empty()) return {this, blocks_.end(), 0};
-  auto last_block = --blocks_.end();
+  auto local_end = blocks_.end();
+  if (blocks_.empty()) return {this, local_end, 0, local_end};
+  auto last_block = --local_end;
   uint32_t insert_head = (*last_block)->GetInsertHead();
   // Last block is full, return the default end iterator that doesn't point to anything
-  if (insert_head == accessor_.GetBlockLayout().NumSlots()) return {this, blocks_.end(), 0};
+  if (insert_head == accessor_.GetBlockLayout().NumSlots()) return {this, local_end, 0, local_end};
   // Otherwise, insert head points to the slot that will be inserted next, which would be exactly what we want.
-  return {this, last_block, insert_head};
+  return {this, last_block, insert_head, local_end};
 }
 
 bool DataTable::Update(const common::ManagedPointer<transaction::TransactionContext> txn, const TupleSlot slot,
@@ -145,7 +148,7 @@ void DataTable::CheckMoveHead(std::list<RawBlock *>::iterator block) {
     // insert block
     blocks_.push_back(new_block);
     // set insertion header to --end()
-    insertion_head_ = --blocks_.end();
+    insertion_head_ = --blocks_.end(); // FIXME(me): why setting it to --blocks_.end() here? Just do not update
   }
 }
 
