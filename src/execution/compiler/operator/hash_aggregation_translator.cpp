@@ -47,6 +47,20 @@ HashAggregationTranslator::HashAggregationTranslator(const planner::AggregatePla
   // Prepare the child.
   compilation_context->Prepare(*plan.GetChild(0), &build_pipeline_);
 
+  for (size_t agg_term_idx = 0; agg_term_idx < plan.GetAggregateTerms().size(); agg_term_idx++) {
+    const auto &agg_term = plan.GetAggregateTerms()[agg_term_idx];
+    compilation_context->Prepare(*agg_term->GetChild(0));
+    if (agg_term->IsDistinct()) {
+      distinct_filters_.emplace(std::make_pair(
+          agg_term_idx,
+          DistinctAggregationFilter(agg_term_idx, agg_term, compilation_context, pipeline, GetCodeGen())));
+    }
+  }
+
+  if (distinct_filters_.size() > 0) {
+    build_pipeline_.UpdateParallelism(Pipeline::Parallelism::Serial);
+  }
+
   // If the build-side is parallel, the produce side is parallel.
   pipeline->RegisterSource(
       this, build_pipeline_.IsParallel() ? Pipeline::Parallelism::Parallel : Pipeline::Parallelism::Serial);
@@ -55,9 +69,7 @@ HashAggregationTranslator::HashAggregationTranslator(const planner::AggregatePla
   for (const auto group_by_term : plan.GetGroupByTerms()) {
     compilation_context->Prepare(*group_by_term);
   }
-  for (const auto agg_term : plan.GetAggregateTerms()) {
-    compilation_context->Prepare(*agg_term->GetChild(0));
-  }
+
 
   // If there's a having clause, prepare it, too.
   if (const auto having_clause = plan.GetHavingClausePredicate(); having_clause != nullptr) {

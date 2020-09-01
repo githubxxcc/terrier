@@ -1,5 +1,6 @@
 #pragma once
 
+#include "distinct_aggregation_util.h"
 #include "execution/compiler/operator/operator_translator.h"
 #include "execution/compiler/pipeline.h"
 #include "execution/compiler/pipeline_driver.h"
@@ -184,6 +185,9 @@ class HashAggregationTranslator : public OperatorTranslator, public PipelineDriv
 
   // For minirunners
   ast::StructDecl *struct_decl_;
+
+  // For distinct aggregations
+  std::unordered_map<size_t, DistinctAggregationFilter> distinct_filters_;
 };
 
 }  // namespace terrier::execution::compiler

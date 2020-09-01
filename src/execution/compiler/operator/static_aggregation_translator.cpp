@@ -20,10 +20,9 @@ StaticAggregationTranslator::StaticAggregationTranslator(const planner::Aggregat
       agg_payload_type_(GetCodeGen()->MakeFreshIdentifier("AggPayload")),
       agg_values_type_(GetCodeGen()->MakeFreshIdentifier("AggValues")),
       merge_func_(GetCodeGen()->MakeFreshIdentifier("MergeAggregates")),
-      build_pipeline_(this, Pipeline::Parallelism::Serial) {
+      build_pipeline_(this, Pipeline::Parallelism::Parallel) {
   TERRIER_ASSERT(plan.GetGroupByTerms().empty(), "Global aggregations shouldn't have grouping keys");
   TERRIER_ASSERT(plan.GetChildrenSize() == 1, "Global aggregations should only have one child");
-  build_pipeline_.UpdateParallelism(Pipeline::Parallelism::Serial);
   // The produce-side is serial since it only generates one output tuple.
   pipeline->RegisterSource(this, Pipeline::Parallelism::Serial);
 
@@ -42,6 +41,10 @@ StaticAggregationTranslator::StaticAggregationTranslator(const planner::Aggregat
           agg_term_idx,
           DistinctAggregationFilter(agg_term_idx, agg_term, compilation_context, pipeline, GetCodeGen())));
     }
+  }
+
+  if (distinct_filters_.size() > 0) {
+    build_pipeline_.UpdateParallelism(Pipeline::Parallelism::Serial);
   }
 
   // If there's a having clause, prepare it, too.
