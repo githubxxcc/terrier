@@ -56,7 +56,8 @@ HashAggregationTranslator::HashAggregationTranslator(const planner::AggregatePla
     if (agg_term->IsDistinct()) {
       distinct_filters_.emplace(std::make_pair(
           agg_term_idx,
-          DistinctAggregationFilter(agg_term_idx, agg_term, compilation_context, pipeline, GetCodeGen())));
+          DistinctAggregationFilter(agg_term_idx, agg_term, plan.GetGroupByTerms().size(),
+                                    compilation_context, pipeline, GetCodeGen())));
     }
   }
 
